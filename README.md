@@ -1,8 +1,11 @@
 # dsh-notify
 
-DSH 会话提醒插件：当任意会话的 AI 正在等待用户处理/填写内容时
-（`question` / `approval` / `plan-review`），用浏览器能力提醒用户。
-普通的工具调用不需要用户过目，因此不会触发提醒。
+DSH 会话提醒插件：当任意会话需要用户介入时提醒用户，包括：
+
+- AI 提问 / 请求批准 / 需要审阅计划（`question` / `approval` / `plan-review`）
+- AI 完成了一轮对话，正在等待用户下一步指令（`running: true → false`）
+
+普通的中间工具调用不需要用户过目，因此不会触发提醒。
 
 ## 行为
 
@@ -17,11 +20,13 @@ DSH 会话提醒插件：当任意会话的 AI 正在等待用户处理/填写�
 
 ## 事件识别
 
-- 仅监听 `pendingInteraction` 从无到有，或从一种 pending 切换为另一种：
+- `pendingInteraction` 从无到有，或从一种 pending 切换为另一种：
   - `question`：AI 提问，需要用户填写/回答
   - `approval`：需要用户批准
   - `plan-review`：需要用户审阅计划
-- 插件启动后第一次列表 `ready` 作为基线，已经存在的 pending 不会补提醒。
+- `running` 从 `true` 变为 `false`，且没有 pending：
+  - 表示 AI 完成了一轮对话，正在等待用户下一步指令
+- 插件启动后第一次列表 `ready` 作为基线，已经存在的 pending / 已完成状态不会补提醒。
 - 点击弹窗会切换到对应会话；切换到该会话后即视为已看到，不会重复提醒。
 
 ## 安装（开发/本地）
@@ -52,7 +57,8 @@ npm test               # 单元/行为测试
 
 测试覆盖：
 - `pendingInteraction` 边沿识别；
-- 首次 ready 基线不触发旧 pending 提醒；
-- completed-only 变化不触发提醒；
+- 完整一轮结束（`running: true → false`）识别；
+- 首次 ready 基线不触发旧 pending / 旧完成状态提醒；
+- `completed` 标志单独变化不触发提醒；
 - DSH `__ModuleLoader__.load` 包装正确；
 - 移动端震动 + 系统通知路径。

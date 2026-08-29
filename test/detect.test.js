@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 // Pure helpers shared by the client bundle.
 // Kept in lib/client.js as exported functions so they can be unit tested
 // without a browser; they are also used by the browser apply().
-import { diffSummaries, shouldDiffList } from '../lib/client.js'
+import { diffSummaries, diffCompletions, shouldDiffList } from '../lib/client.js'
 
 test('diffSummaries emits pending interaction on absent -> present', () => {
   const prev = {
@@ -67,4 +67,44 @@ test('shouldDiffList only enables diffing after both snapshots are ready', () =>
   assert.equal(shouldDiffList(pending, pending), false)
   assert.equal(shouldDiffList(pending, ready), false)
   assert.equal(shouldDiffList(ready, ready), true)
+})
+
+test('diffCompletions emits completed on running true -> false without pending', () => {
+  const next = {
+    byId: {
+      a: { id: 'a', displayTitle: 'A', running: false },
+    },
+  }
+  const prevRunning = new Map([['a', true]])
+  const events = []
+  diffCompletions(next, prevRunning, (event) => events.push(event))
+  assert.equal(events.length, 1)
+  assert.equal(events[0].kind, 'completed')
+  assert.equal(events[0].sessionId, 'a')
+  assert.equal(prevRunning.get('a'), false)
+})
+
+test('diffCompletions does not emit when a pending interaction is present', () => {
+  const next = {
+    byId: {
+      a: { id: 'a', displayTitle: 'A', running: false, pendingInteraction: 'question' },
+    },
+  }
+  const prevRunning = new Map([['a', true]])
+  const events = []
+  diffCompletions(next, prevRunning, (event) => events.push(event))
+  assert.equal(events.length, 0)
+})
+
+test('diffCompletions seeds unknown sessions without emitting', () => {
+  const next = {
+    byId: {
+      a: { id: 'a', displayTitle: 'A', running: true },
+    },
+  }
+  const prevRunning = new Map()
+  const events = []
+  diffCompletions(next, prevRunning, (event) => events.push(event))
+  assert.equal(events.length, 0)
+  assert.equal(prevRunning.get('a'), true)
 })
