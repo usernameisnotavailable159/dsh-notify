@@ -136,3 +136,58 @@ test('client apply sends pending reminder only', () => {
     else delete globalThis.Notification
   }
 })
+
+test('hidden startup with pre-existing pending sends one reminder', () => {
+  const originalWindow = globalThis.window
+  const originalDocument = globalThis.document
+  const navigatorDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const notificationDesc = Object.getOwnPropertyDescriptor(globalThis, 'Notification')
+
+  const document = makeDocument()
+  document.hidden = true
+  document.hasFocus = () => false
+  globalThis.window = {
+    matchMedia: () => ({ matches: false }),
+    innerWidth: 1280,
+    maxTouchPoints: 0,
+    addEventListener() {},
+    removeEventListener() {},
+    focus() {},
+    AudioContext: class {
+      constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {} }
+      createOscillator() { return { type: '', frequency: { value: 0 }, connect() { return this }, start() {}, stop() {} } }
+      createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() { return this } } }
+      resume() { this.state = 'running'; return Promise.resolve() }
+    },
+  }
+  globalThis.document = document
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { maxTouchPoints: 0 } })
+  Object.defineProperty(globalThis, 'Notification', {
+    configurable: true,
+    value: class { static permission = 'denied'; static requestPermission() { return Promise.resolve('denied') } },
+  })
+
+  const list = makeStore({ phase: 'pending', ids: [], byId: {}, current: undefined })
+  const dispose = apply({ sessions: { list, open() {} } })
+
+  try {
+    list.set({
+      phase: 'ready',
+      ids: ['x', 'y'],
+      byId: {
+        x: { id: 'x', displayTitle: 'X', pendingInteraction: 'question' },
+        y: { id: 'y', displayTitle: 'Y', pendingInteraction: 'approval' },
+      },
+      current: undefined,
+    })
+    assert.equal(document.body.children.length, 1, 'hidden startup should send one aggregated toast')
+  } finally {
+    dispose()
+    globalThis.window = originalWindow
+    globalThis.document = originalDocument
+    if (navigatorDesc) Object.defineProperty(globalThis, 'navigator', navigatorDesc)
+    else delete globalThis.navigator
+    if (notificationDesc) Object.defineProperty(globalThis, 'Notification', notificationDesc)
+    else delete globalThis.Notification
+  }
+})
