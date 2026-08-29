@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "main": "./lib/index.js",
   "client": {
-    "main": "./lib/client.js",
+    "main": "./lib/client.bundle.js",
     "inject": [
       "@deepseek-ai/dsh-client-runtime"
     ]

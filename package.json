@@ -7,7 +7,7 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./client": "./lib/client.js",
+    "./client": "./lib/client.bundle.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -19,7 +19,8 @@
       "inject": [
         "@deepseek-ai/dsh-client-runtime"
       ],
-      "platform": "web"
+      "platform": "web",
+      "main": "./lib/client.bundle.js"
     }
   },
   "files": [
@@ -30,7 +31,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "npm run build:client"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"

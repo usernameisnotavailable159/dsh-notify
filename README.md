@@ -38,11 +38,12 @@ cd ~/.dsh/profiles/web
   拒绝后仍保留网页内弹窗与提示音/震动。
 - 纯客户端实现，不上传任何数据。
 
-## 测试
+## 构建与测试
 
 ```bash
 cd ~/projects/dsh-notify
-npm test
+npm run build:client   # 生成 lib/client.bundle.js（DSH loader 包装）
+npm test               # 单元/行为测试
 ```
 
 测试覆盖：
