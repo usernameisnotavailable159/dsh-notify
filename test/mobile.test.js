@@ -67,6 +67,7 @@ test('mobile path uses vibration and system notification', () => {
 
   const listeners = new Set()
   let listState = {
+    phase: 'ready',
     ids: ['m'],
     byId: { m: { id: 'm', displayTitle: 'Mobile', running: false } },
     current: undefined,
@@ -80,6 +81,7 @@ test('mobile path uses vibration and system notification', () => {
 
   // Trigger a pending-interaction edge in the mobile list.
   sessionsList.set({
+    phase: 'ready',
     ids: ['m'],
     byId: { m: { id: 'm', displayTitle: 'Mobile', pendingInteraction: 'question', running: false } },
     current: undefined,

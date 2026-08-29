@@ -31,7 +31,7 @@ ${body}
     exports.name = name;
     exports.inject = inject;
     exports.diffSummaries = diffSummaries;
-    exports.toolResultSeqs = toolResultSeqs;
+    exports.shouldDiffList = shouldDiffList;
     exports.apply = apply;
     return module.exports;
   }
