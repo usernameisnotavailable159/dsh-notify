@@ -51,6 +51,16 @@ function makeStore(initial) {
   }
 }
 
+function makeSession(initialSnapshot) {
+  const listeners = new Set()
+  let snapshot = initialSnapshot
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn) },
+    set(next) { snapshot = next; for (const fn of [...listeners]) fn() },
+  }
+}
+
 test('client apply sends pending reminder only', () => {
   const originalWindow = globalThis.window
   const originalDocument = globalThis.document
@@ -310,6 +320,78 @@ test('client apply sends completed-round reminder on running true -> false', () 
       current: undefined,
     })
     assert.ok(document.body.children.length > 0, 'completed round should remind')
+  } finally {
+    dispose()
+    globalThis.window = originalWindow
+    globalThis.document = originalDocument
+    if (navigatorDesc) Object.defineProperty(globalThis, 'navigator', navigatorDesc)
+    else delete globalThis.navigator
+    if (notificationDesc) Object.defineProperty(globalThis, 'Notification', notificationDesc)
+    else delete globalThis.Notification
+  }
+})
+
+test('user-stopped session does not trigger completed reminder', () => {
+  const originalWindow = globalThis.window
+  const originalDocument = globalThis.document
+  const navigatorDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const notificationDesc = Object.getOwnPropertyDescriptor(globalThis, 'Notification')
+
+  const document = makeDocument()
+  globalThis.window = {
+    matchMedia: () => ({ matches: false }),
+    innerWidth: 1280,
+    maxTouchPoints: 0,
+    addEventListener() {},
+    removeEventListener() {},
+    focus() {},
+    AudioContext: class {
+      constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {} }
+      createOscillator() { return { type: '', frequency: { value: 0 }, connect() { return this }, start() {}, stop() {} } }
+      createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() { return this } } }
+      resume() { this.state = 'running'; return Promise.resolve() }
+    },
+  }
+  globalThis.document = document
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { maxTouchPoints: 0 } })
+  Object.defineProperty(globalThis, 'Notification', {
+    configurable: true,
+    value: class { static permission = 'denied'; static requestPermission() { return Promise.resolve('denied') } },
+  })
+
+  const session = makeSession({
+    nodes: [{ kind: 'assistant', seq: 2, interrupted: true }],
+    running: false,
+    pending: [],
+  })
+  const list = makeStore({
+    phase: 'ready',
+    ids: ['s'],
+    byId: { s: { id: 's', displayTitle: 'Stopped', running: false } },
+    current: 's',
+  })
+  const sessions = {
+    list,
+    binding(id) { return id === 's' ? { session } : undefined },
+    open() {},
+  }
+  const dispose = apply({ sessions })
+
+  try {
+    list.set({
+      phase: 'ready',
+      ids: ['s'],
+      byId: { s: { id: 's', displayTitle: 'Stopped', running: true } },
+      current: 's',
+    })
+    assert.equal(document.body.children.length, 0, 'starting should not remind')
+    list.set({
+      phase: 'ready',
+      ids: ['s'],
+      byId: { s: { id: 's', displayTitle: 'Stopped', running: false } },
+      current: 's',
+    })
+    assert.equal(document.body.children.length, 0, 'user stop should not remind')
   } finally {
     dispose()
     globalThis.window = originalWindow
