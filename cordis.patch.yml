@@ -1,0 +1,4 @@
+# dsh bundle patch: insert the session notification plugin.
+- insert:
+    - id: dsh-notify
+      name: '@dsh-external/dsh-notify'
