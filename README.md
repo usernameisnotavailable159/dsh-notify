@@ -16,6 +16,11 @@ DSH 会话提醒插件：当任意会话需要用户介入时提醒用户，包�
   - `navigator.vibrate()` 震动（跟随 Android 系统震动设置）。
   - 已授权 `Notification` 时弹出系统通知，铃声/震动交给 Android 系统按当前通知设置处理；
     未授权或不可用时回退为网页内弹窗 + Web Audio 提示音。
+  - 在 TermuxLauncher 内嵌 WebView 中，优先通过 `themeBridge.notify()` 调用原生通知，
+    避免 WebView 不支持 Web Notification 导致只在应用内提示。
+  - **应用外提示（锁屏/通知栏/悬浮窗）由 TermuxLauncher 的 `DshEventMonitor` 负责**：
+    它直接监听 DSH 本地 `/api/events.mux` WebSocket 流，即使 WebView 被暂停或用户切到其他应用，
+    也能在 AI 提问、请求批准/审阅、完成一轮时发出 Android 系统通知。
   - 始终显示网页内弹窗，避免用户错过；点击弹窗会切换到对应会话。
 
 ## 事件识别
@@ -45,7 +50,8 @@ cd ~/.dsh/profiles/web
 
 - 首次使用时若浏览器通知权限为 `default`，插件会在第一次点击/触摸页面时请求通知权限；
   拒绝后仍保留网页内弹窗与提示音/震动。
-- 纯客户端实现，不上传任何数据。
+- 插件本体纯客户端实现，不上传任何数据；Android 应用外提醒由 TermuxLauncher 在本机监听 DSH 本地 API 完成，同样不出本机。
+- Android 应用外通知依赖 TermuxLauncher 新版本（含 `DshEventMonitor`）；只安装本插件时仍以应用内弹窗/震动为主。
 
 ## 构建与测试
 
@@ -61,4 +67,5 @@ npm test               # 单元/行为测试
 - 首次 ready 基线不触发旧 pending / 旧完成状态提醒；
 - `completed` 标志单独变化不触发提醒；
 - DSH `__ModuleLoader__.load` 包装正确；
-- 移动端震动 + 系统通知路径。
+- 移动端震动 + 系统通知路径；
+- TermuxLauncher 原生 `themeBridge.notify()` 优先路径。
