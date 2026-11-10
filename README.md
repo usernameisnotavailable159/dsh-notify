@@ -12,16 +12,24 @@ DSH 会话提醒插件：当任意会话需要用户介入时提醒用户，包�
 - **PC 端**
   - 页面可见时：页面边缘闪烁提示 + 短促提示音 + 轻量弹条。
   - 页面在后台/未聚焦时：浏览器标签页标题闪烁 + 短促提示音。
-- **移动端**
+- **移动端（一次事件只出一个提示）**
   - `navigator.vibrate()` 震动（跟随 Android 系统震动设置）。
-  - 已授权 `Notification` 时弹出系统通知，铃声/震动交给 Android 系统按当前通知设置处理；
-    未授权或不可用时回退为网页内弹窗 + Web Audio 提示音。
-  - 在 TermuxLauncher 内嵌 WebView 中，优先通过 `themeBridge.notify()` 调用原生通知，
-    避免 WebView 不支持 Web Notification 导致只在应用内提示。
+  - 一条系统通知就是提示本身；**通知发出去后不再叠加网页内弹窗**，避免"一次完成、两种提示"。
+    只有原生通道拿不到时（无 `themeBridge`、`Notification` 被拒）才回退网页弹窗 + 提示音。
+  - 在 TermuxLauncher 内嵌 WebView 中走 `window.themeBridge.notifyEx(json)` 调原生通知，
+    载荷与 App 的 `POST /v1/notify` 完全一致（`key` 是跨来源去重键）。
   - **应用外提示（锁屏/通知栏/悬浮窗）由 TermuxLauncher 的 `DshEventMonitor` 负责**：
     它直接监听 DSH 本地 `/api/events.mux` WebSocket 流，即使 WebView 被暂停或用户切到其他应用，
     也能在 AI 提问、请求批准/审阅、完成一轮时发出 Android 系统通知。
-  - 始终显示网页内弹窗，避免用户错过；点击弹窗会切换到对应会话。
+  - **分工规则（本插件不再和原生监控器抢）**：
+    - 页面**可见**（App 前台且停在该页）→ 本插件发通知；此时 `DshEventMonitor` 因 `webVisible`
+      为真而静默。
+    - 页面**不可见**（App 退到后台 / 别的服务页）→ 本插件**不发**，全部交给 `DshEventMonitor`。
+    - 页面从后台恢复后 1.5 秒内的快照差异只重建基线、不提醒：那是 WebView 积压事件的重放，
+      后台那一段原生监控器已经发过了（这正是"同一条完成提示弹两次"的来源）。
+    - 同一 `key` 在本页 15 秒内只提醒一次（慢路径兜底：原生去重窗口只有 6 秒）。
+    - 手机端不再在"离开页面"时补发待处理提醒（边沿时已经提醒过一次，补发就是第二次）。
+
 
 ## 事件识别
 
@@ -69,4 +77,39 @@ npm test               # 单元/行为测试
 - `completed` 标志单独变化不触发提醒；
 - DSH `__ModuleLoader__.load` 包装正确；
 - 移动端震动 + 系统通知路径；
-- TermuxLauncher 原生 `themeBridge.notify()` 优先路径。
+- TermuxLauncher 原生 `themeBridge.notify()` 优先路径；
+- 一次事件只出一条提示：App 内页面不可见时插件静默、可见时只发一条原生通知且不叠弹窗、
+  同一 key 连发只提醒一次、回前台的积压重放不补发（`test/single-prompt.test.js`）。
+
+## 生效方式与现场验证
+
+- **只改客户端**：`npm run build:client` 之后，在 App 里**重新加载 DSH 页面**即生效
+  （实测：`client.bundle.js` 的 mtime 一变，`/` 返回的引导清单里该插件的 `rev` 就变，
+  `plugins/??@dsh-external/dsh-notify/client.js&rev=…` 会拉到新字节；不需要重启 dsh、不碰 localhub APK）。
+- **现场验证一次真实提醒**：
+  - `GET http://127.0.0.1:45900/v1/notify/last` —— 页面桥最后一次调用的原文（判断页面发没发）；
+  - `adb logcat -b events -v time | grep 'notification_enqueue.*dsh_reminders'` ——
+    通知真正入队的条形（一次事件应只有一条；`messages_high` 是低优先级通道）。
+
+
+## 统一通知协议（与 TermuxLauncher / chat-engine 共用）
+
+移动端优先调用 `window.themeBridge.notifyEx(json)`，字段与 `POST /v1/notify` 完全一致
+（见 `termux-launcher/docs/localhub-notify.md`）：
+
+```json
+{
+  "title": "会话名 · 已完成一轮",
+  "text": "AI 已完成一轮对话，正在等待你的进一步指令。",
+  "key": "turn:<sessionId>",
+  "priority": "high",
+  "sessionId": "<sessionId>",
+  "serviceId": "harness"
+}
+```
+
+`key` 是跨来源去重键：TermuxLauncher 的 `DshEventMonitor` 也会对同一事件发一条，
+key 相同 ⇒ 原生侧 6 秒窗口只保留第一条，不再出现"一次完成弹两条"。
+
+旧版 App 只有 `themeBridge.notify(title, body, tag)`，这里会把同一个 `key` 作为 `tag` 传下去，
+行为一致；再退回浏览器 `new Notification()` 时也用 `key` 作 `tag`（同 tag 覆盖）。

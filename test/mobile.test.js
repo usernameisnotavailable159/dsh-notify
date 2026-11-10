@@ -171,3 +171,85 @@ test('mobile path prefers native themeBridge.notify when available', () => {
   globalThis.window = originalWindow
   globalThis.document = originalDocument
 })
+
+test('mobile path prefers themeBridge.notifyEx with unified payload', () => {
+  const originalWindow = globalThis.window
+  const originalDocument = globalThis.document
+  const navigatorDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const notificationDesc = Object.getOwnPropertyDescriptor(globalThis, 'Notification')
+
+  const body = makeElement('body')
+  const document = {
+    body,
+    head: makeElement('head'),
+    documentElement: makeElement('html'),
+    hidden: false,
+    title: 'DSH',
+    createElement: (tag) => makeElement(tag),
+    getElementById: () => null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+    removeEventListener() {},
+    appendChild(child) { body.appendChild(child) },
+    hasFocus: () => true,
+  }
+  const rich = []
+  const legacy = []
+  globalThis.window = {
+    matchMedia: () => ({ matches: true }),
+    innerWidth: 390,
+    themeBridge: {
+      notifyEx(json) { rich.push(JSON.parse(json)) },
+      notify(title, text, tag) { legacy.push([title, text, tag]) },
+    },
+    addEventListener() {},
+    removeEventListener() {},
+    focus() {},
+  }
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { maxTouchPoints: 5, vibrate() {} },
+  })
+  Object.defineProperty(globalThis, 'Notification', {
+    configurable: true,
+    value: class {
+      static permission = 'denied'
+      static requestPermission() { return Promise.resolve('denied') }
+    },
+  })
+
+  const listeners = new Set()
+  let listState = {
+    phase: 'ready',
+    ids: ['r'],
+    byId: { r: { id: 'r', displayTitle: 'Rich', running: false } },
+    current: undefined,
+  }
+  const sessionsList = {
+    getSnapshot: () => listState,
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn) },
+    set(next) { listState = next; for (const fn of [...listeners]) fn() },
+  }
+  const dispose = apply({ sessions: { list: sessionsList, binding: () => undefined } })
+
+  sessionsList.set({
+    phase: 'ready',
+    ids: ['r'],
+    byId: { r: { id: 'r', displayTitle: 'Rich', pendingInteraction: 'approval', running: false } },
+    current: undefined,
+  })
+
+  assert.equal(rich.length, 1, 'notifyEx should be called exactly once')
+  assert.equal(rich[0].key, 'pending:r', 'key must be the shared dedupe key')
+  assert.equal(rich[0].priority, 'high')
+  assert.equal(rich[0].serviceId, 'harness')
+  assert.equal(rich[0].sessionId, 'r')
+  assert.ok(rich[0].title.includes('Rich'))
+  assert.equal(legacy.length, 0, 'legacy notify must not be used when notifyEx exists')
+  dispose()
+
+  Object.defineProperty(globalThis, 'navigator', navigatorDesc ?? { configurable: true, value: undefined })
+  Object.defineProperty(globalThis, 'Notification', notificationDesc ?? { configurable: true, value: undefined })
+  globalThis.window = originalWindow
+  globalThis.document = originalDocument
+})
